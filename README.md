@@ -1,50 +1,102 @@
 # kafka-health-test project
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+This simple project is used to check if there is a bug in Quarkus that doesn't allow to disable the kafka health/readiness check.
 
-If you want to learn more about Quarkus, please visit its website: https://quarkus.io/ .
+As the application needs a running kafka, you can start one using docker: 
 
-## Running the application in dev mode
+`mvn docker:build docker:start`
+`mvn docker:stop`
 
-You can run your application in dev mode that enables live coding using:
-```shell script
-./mvnw compile quarkus:dev
+It also comes with a running akhq running on [http://localhost:7080](http://localhost:7080)
+
+Of you have your own kafka running, you have to change the settings in `aplication.propreties`.
+
+When everything is ready you can start the application as usual with `mvn quarkus:dev`. You now see that the health check is serving the kafka state under http://localhost:8080/health
+
+```json
+{
+    "status": "UP",
+    "checks": [
+        {
+            "name": "SmallRye Reactive Messaging - liveness check",
+            "status": "UP"
+        },
+        {
+            "name": "SmallRye Reactive Messaging - readiness check",
+            "status": "UP"
+        }
+    ]
+}
+```
+even it is disabled in `application.properties`: 
+
+```plain
+mp.messaging.incoming.demo.health-enabled=false
+mp.messaging.incoming.demo.health-readiness-enabled=false
+quarkus.kafka.health.enabled=false
 ```
 
-## Packaging and running the application
+Run the test `DemoConsumerIT.java` to see it getting `down`: 
 
-The application can be packaged using:
-```shell script
-./mvnw package
-```
-It produces the `kafka-health-test-1.0.0-SNAPSHOT-runner.jar` file in the `/target` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/lib` directory.
+```json
 
-If you want to build an _über-jar_, execute the following command:
-```shell script
-./mvnw package -Dquarkus.package.type=uber-jar
-```
+{
+    "status": "DOWN",
+    "checks": [
+        {
+            "name": "SmallRye Reactive Messaging - liveness check",
+            "status": "DOWN",
+            "data": {
+                "application-ch.erard22.quarkus.DemoConsumer#consume": "[KO] - failed to process: Testmessage"
+            }
+        },
+        {
+            "name": "SmallRye Reactive Messaging - readiness check",
+            "status": "DOWN",
+            "data": {
+                "application-ch.erard22.quarkus.DemoConsumer#consume": "[KO] - failed to process: Testmessage"
+            }
+        }
+    ]
+}
 
-The application is now runnable using `java -jar target/kafka-health-test-1.0.0-SNAPSHOT-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using: 
-```shell script
-./mvnw package -Pnative
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using: 
-```shell script
-./mvnw package -Pnative -Dquarkus.native.container-build=true
 ```
 
-You can then execute your native executable with: `./target/kafka-health-test-1.0.0-SNAPSHOT-runner`
+So the property 
+```plain
+quarkus.kafka.health.enabled=false
+```
 
-If you want to learn more about building native executables, please consult https://quarkus.io/guides/maven-tooling.html.
+has no effect. This can be proven by setting the properties provided by Smallrye to true changes the output: 
 
-# RESTEasy JAX-RS
+```plain
+mp.messaging.incoming.demo.health-enabled=true
+mp.messaging.incoming.demo.health-readiness-enabled=true
+quarkus.kafka.health.enabled=false
+```
 
-<p>A Hello World RESTEasy resource</p>
+It seems they are working and che check is ignored.
 
-Guide: https://quarkus.io/guides/rest-json
+```json
+{
+    "status": "DOWN",
+    "checks": [
+        {
+            "name": "SmallRye Reactive Messaging - liveness check",
+            "status": "DOWN",
+            "data": {
+                "application-ch.erard22.quarkus.DemoConsumer#consume": "[KO] - failed to process: Testmessage",
+                "demo": "[KO] - failed to process: Testmessage"
+            }
+        },
+        {
+            "name": "SmallRye Reactive Messaging - readiness check",
+            "status": "DOWN",
+            "data": {
+                "application-ch.erard22.quarkus.DemoConsumer#consume": "[KO] - failed to process: Testmessage",
+                "demo": "[OK]"
+            }
+        }
+    ]
+}
+```
